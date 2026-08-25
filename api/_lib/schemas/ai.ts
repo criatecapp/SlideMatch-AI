@@ -44,12 +44,23 @@ export type PresentationPlan = z.infer<typeof PresentationPlanSchema>;
 // Estritamente validável; sanitização referencial (slotId precisa existir
 // de verdade no layout) acontece em contentMapper.ts, não aqui.
 // ---------------------------------------------------------------------------
+export const ChartDataPointSchema = z.object({
+  label: z.string(),
+  value: z.number(),
+});
+export type ChartDataPoint = z.infer<typeof ChartDataPointSchema>;
+
 export const SlotAssignmentSchema = z.object({
   slotId: z.string(),
   textValue: z.string().optional(),
   imageQuery: z.string().optional(),
   listItems: z.array(z.string()).optional(),
   statValue: z.string().optional(),
+  // kind="chart": pontos {label, value} pra um gráfico de barras.
+  chartTitle: z.string().optional(),
+  dataPoints: z.array(ChartDataPointSchema).optional(),
+  // kind="table": primeira linha é o cabeçalho.
+  tableRows: z.array(z.array(z.string())).optional(),
 });
 export type SlotAssignment = z.infer<typeof SlotAssignmentSchema>;
 

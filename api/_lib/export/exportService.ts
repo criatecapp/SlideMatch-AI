@@ -54,6 +54,32 @@ export async function exportToPptx(slides: Slide[], layouts: Layout[], designSys
         if (dataUri) pptxSlide.addImage({ data: dataUri, x, y, w, h, sizing: { type: "cover", w, h } });
         continue;
       }
+
+      if (el.kind === "chart" && el.dataPoints && el.dataPoints.length > 0) {
+        pptxSlide.addChart(
+          pres.ChartType.bar,
+          [{ name: el.chartTitle ?? "", labels: el.dataPoints.map((p) => p.label), values: el.dataPoints.map((p) => p.value) }],
+          { x, y, w, h, chartColors: [designSystem.palette.accent.replace("#", "")], showTitle: Boolean(el.chartTitle), title: el.chartTitle, showLegend: false },
+        );
+        continue;
+      }
+
+      if (el.kind === "table" && el.tableRows && el.tableRows.length > 0) {
+        const rows = el.tableRows.map((row, ri) =>
+          row.map((cell) => ({
+            text: cell,
+            options: {
+              bold: ri === 0,
+              fill: { color: ri === 0 ? designSystem.palette.surface.replace("#", "") : "FFFFFF" },
+              color: designSystem.palette.ink.replace("#", ""),
+              fontSize: 12,
+            },
+          })),
+        );
+        pptxSlide.addTable(rows, { x, y, w, h, border: { type: "solid", color: designSystem.palette.surface.replace("#", ""), pt: 1 } });
+        continue;
+      }
+
       const text = el.text ?? (el.listItems ? el.listItems.map((i) => `• ${i}`).join("\n") : el.statValue);
       if (!text) continue;
       const isTitleLike = el.role === "title" || el.role === "subtitle" || el.role === "heading";

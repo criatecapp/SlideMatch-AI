@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { SlotKindSchema, SlotPositionSchema } from "./template";
+import { ChartDataPointSchema } from "./ai";
 
 export type PresentationStatus = "draft" | "analyzing" | "planned" | "generating" | "generated" | "optimized" | "failed";
 
@@ -18,6 +19,9 @@ export const SlideElementSchema = z.object({
   imageMediaId: z.string().optional(),
   listItems: z.array(z.string()).optional(),
   statValue: z.string().optional(),
+  chartTitle: z.string().optional(),
+  dataPoints: z.array(ChartDataPointSchema).optional(),
+  tableRows: z.array(z.array(z.string())).optional(),
   // Preenchidos pelo Content Fit Engine quando precisa desviar do default
   // do slot pra caber o conteúdo — nunca abaixo do piso definido no slot.
   fontSize: z.number().optional(),

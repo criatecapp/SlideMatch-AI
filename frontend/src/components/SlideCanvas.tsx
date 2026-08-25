@@ -57,6 +57,38 @@ function ElementView({ el, designSystem, editable, onTextChange }: { el: SlideEl
     );
   }
 
+  if (el.kind === "chart" && el.dataPoints && el.dataPoints.length > 0) {
+    const maxValue = Math.max(...el.dataPoints.map((p) => p.value), 1);
+    return (
+      <div style={{ ...style, flexDirection: "column", alignItems: "stretch" }}>
+        {el.chartTitle && <div style={{ fontSize: 16, fontWeight: 700, color: designSystem.palette.ink, marginBottom: 6 }}>{el.chartTitle}</div>}
+        <div style={{ display: "flex", flex: 1, alignItems: "flex-end", justifyContent: "space-around", gap: 12 }}>
+          {el.dataPoints.map((p, i) => (
+            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", flex: 1, height: "100%" }}>
+              <span style={{ fontSize: 12, color: designSystem.palette.ink, marginBottom: 4 }}>{p.value}</span>
+              <div style={{ width: "60%", height: `${(p.value / maxValue) * 70}%`, background: designSystem.palette.accent, borderRadius: 4 }} />
+              <span style={{ fontSize: 11, color: designSystem.palette.muted, marginTop: 4 }}>{p.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (el.kind === "table" && el.tableRows && el.tableRows.length > 0) {
+    return (
+      <div style={{ ...style, flexDirection: "column", alignItems: "stretch" }}>
+        {el.tableRows.map((row, ri) => (
+          <div key={ri} style={{ display: "flex", flex: 1, borderBottom: `1px solid ${designSystem.palette.surface}`, background: ri === 0 ? designSystem.palette.surface : "transparent" }}>
+            {row.map((cell, ci) => (
+              <div key={ci} style={{ flex: 1, display: "flex", alignItems: "center", padding: 6, fontSize: 13, fontWeight: ri === 0 ? 700 : 400, color: designSystem.palette.ink }}>{cell}</div>
+            ))}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   const isTitleLike = el.role === "title" || el.role === "subtitle" || el.role === "heading";
   const fontSize = el.fontSize ?? designSystem.typography.scale.body;
   const color = el.role === "statistic" ? designSystem.palette.accent : designSystem.palette.ink;

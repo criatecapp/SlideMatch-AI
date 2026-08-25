@@ -31,6 +31,9 @@ function previewSlide(layout: Layout) {
       position: s.position,
       text: s.kind === "text" ? `[${s.role}]` : undefined,
       statValue: s.role === "statistic" ? "87%" : undefined,
+      chartTitle: s.kind === "chart" ? "Exemplo" : undefined,
+      dataPoints: s.kind === "chart" ? [{ label: "A", value: 10 }, { label: "B", value: 6 }, { label: "C", value: 14 }] : undefined,
+      tableRows: s.kind === "table" ? [["Coluna 1", "Coluna 2"], ["Valor A", "Valor B"]] : undefined,
       overflow: false,
     })),
   };

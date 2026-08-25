@@ -23,6 +23,26 @@ describe("exportToPptx", () => {
     const badSlide: Slide = { ...SLIDES[0], layoutId: "missing" };
     await expect(exportToPptx([badSlide], [LAYOUT], DESIGN_SYSTEM, "16:9")).rejects.toThrow('Layout "missing"');
   });
+
+  it("embeds a real chart (adds an embedded workbook, so the zip grows noticeably) without throwing", async () => {
+    const chartSlide: Slide = {
+      order: 0, layoutId: "l1", purpose: "data",
+      elements: [{ slotId: "chart1", kind: "chart", role: "chart", position: { x: 10, y: 10, w: 80, h: 70 }, chartTitle: "Incidentes", dataPoints: [{ label: "Jan", value: 12 }, { label: "Fev", value: 8 }], overflow: false }],
+    };
+    const buf = await exportToPptx([chartSlide], [LAYOUT], DESIGN_SYSTEM, "16:9");
+    expect(buf.subarray(0, 2).toString()).toBe("PK");
+    expect(buf.length).toBeGreaterThan(5000); // gráfico embute um workbook real, não é um texto simples
+  }, 20000);
+
+  it("embeds a real table without throwing", async () => {
+    const tableSlide: Slide = {
+      order: 0, layoutId: "l1", purpose: "data",
+      elements: [{ slotId: "table1", kind: "table", role: "table", position: { x: 10, y: 10, w: 80, h: 70 }, tableRows: [["Risco", "Nível"], ["Phishing", "Alto"]], overflow: false }],
+    };
+    const buf = await exportToPptx([tableSlide], [LAYOUT], DESIGN_SYSTEM, "16:9");
+    expect(buf.subarray(0, 2).toString()).toBe("PK");
+    expect(buf.length).toBeGreaterThan(1000);
+  }, 20000);
 });
 
 describe("exportToPngs", () => {

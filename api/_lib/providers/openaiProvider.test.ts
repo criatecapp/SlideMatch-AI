@@ -95,6 +95,21 @@ describe("OpenAIProvider", () => {
     expect(userContent.availableSlotIds).toEqual(["title"]);
   });
 
+  it("mapContentToSlots's system prompt instructs real data for chart/table slots, never invented numbers", async () => {
+    mockCreate.mockResolvedValue(responseWith(JSON.stringify({ slotAssignments: [] })));
+    const provider = new OpenAIProvider({ apiKey: "fake" });
+    await provider.mapContentToSlots({
+      contentAnalysis: { topic: "T", audience: "A", tone: "x", summary: "s", keyPoints: [], suggestedPurposes: [] },
+      section: { order: 0, purpose: "data", contentType: "data" },
+      layout: LAYOUT as any,
+      availableImages: [],
+    });
+    const systemPrompt = (mockCreate.mock.calls[0][0].messages[0].content as string).toLowerCase();
+    expect(systemPrompt).toContain("datapoints");
+    expect(systemPrompt).toContain("tablerows");
+    expect(systemPrompt).toContain("nunca invente números");
+  });
+
   it("planArtDirection returns a parsed DesignDirection", async () => {
     mockCreate.mockResolvedValue(
       responseWith(JSON.stringify({ style: "premium_corporate", density: "low", imageTreatment: "full_bleed", textDensity: "low", accentUsage: "moderate", rationale: "x" })),

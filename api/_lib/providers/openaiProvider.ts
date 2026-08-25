@@ -152,8 +152,13 @@ export class OpenAIProvider implements AIProvider {
       "availableSlotIds. Se um slot não tiver conteúdo adequado, deixe-o de fora do " +
       "resultado (nunca invente conteúdo genérico só pra preencher). Pra slots de imagem, " +
       "escreva um imageQuery descrevendo a imagem ideal (o casamento com uma imagem real " +
-      "acontece em outra etapa). Responda em JSON com a chave 'slotAssignments': lista de " +
-      "{slotId, textValue?, imageQuery?, listItems?, statValue?}.";
+      "acontece em outra etapa). Pra slots kind=chart, use dataPoints (lista de {label, " +
+      "value} com números REAIS extraídos do conteúdo — nunca invente números que não " +
+      "estão no texto) e chartTitle. Pra slots kind=table, use tableRows (lista de listas " +
+      "de string, primeira linha é o cabeçalho). Se não houver dado numérico real no " +
+      "conteúdo pra um slot de chart/table, deixe-o de fora do resultado. Responda em JSON " +
+      "com a chave 'slotAssignments': lista de {slotId, textValue?, imageQuery?, listItems?, " +
+      "statValue?, chartTitle?, dataPoints?, tableRows?}.";
     const user = JSON.stringify({
       contentAnalysis: params.contentAnalysis,
       section: params.section,

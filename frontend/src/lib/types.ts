@@ -97,6 +97,9 @@ export interface SlideElement {
   imageMediaId?: string;
   listItems?: string[];
   statValue?: string;
+  chartTitle?: string;
+  dataPoints?: { label: string; value: number }[];
+  tableRows?: string[][];
   fontSize?: number;
   overflow: boolean;
 }

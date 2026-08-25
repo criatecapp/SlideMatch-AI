@@ -41,6 +41,46 @@ async function elementToNode(el: SlideElement, canvas: { width: number; height: 
     return { type: "img", props: { src: dataUri, style: { ...positionStyle, objectFit: "cover" } } };
   }
 
+  if (el.kind === "chart" && el.dataPoints && el.dataPoints.length > 0) {
+    const titleHeight = el.chartTitle ? 32 : 0;
+    const maxValue = Math.max(...el.dataPoints.map((p) => p.value), 1);
+    const barsRowHeight = height - titleHeight;
+    const bars = el.dataPoints.map((p) =>
+      div(
+        { display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end", height: barsRowHeight, flexGrow: 1 },
+        [
+          div({ display: "flex", fontSize: 13, color: designSystem.palette.ink, marginBottom: 4 }, String(p.value)),
+          div({ display: "flex", width: "60%", height: Math.max(2, (p.value / maxValue) * (barsRowHeight - 40)), background: designSystem.palette.accent, borderRadius: 4 }),
+          div({ display: "flex", fontSize: 12, color: designSystem.palette.muted, marginTop: 6 }, p.label),
+        ],
+      ),
+    );
+    const children: SNode[] = [];
+    if (el.chartTitle) children.push(div({ display: "flex", height: titleHeight, fontSize: 16, fontWeight: 700, color: designSystem.palette.ink }, el.chartTitle));
+    children.push(div({ display: "flex", flexDirection: "row", alignItems: "flex-end", justifyContent: "space-around", height: barsRowHeight, width: "100%", gap: 12 }, bars));
+    return div({ ...positionStyle, flexDirection: "column" }, children);
+  }
+
+  if (el.kind === "table" && el.tableRows && el.tableRows.length > 0) {
+    const rowHeight = height / el.tableRows.length;
+    const rows = el.tableRows.map((row, ri) =>
+      div(
+        {
+          display: "flex", flexDirection: "row", height: rowHeight, width: "100%",
+          background: ri === 0 ? designSystem.palette.surface : "transparent",
+          borderBottom: `1px solid ${designSystem.palette.surface}`,
+        },
+        row.map((cell) =>
+          div(
+            { display: "flex", flexGrow: 1, alignItems: "center", padding: 8, fontSize: 14, fontWeight: ri === 0 ? 700 : 400, color: designSystem.palette.ink },
+            cell,
+          ),
+        ),
+      ),
+    );
+    return div({ ...positionStyle, flexDirection: "column" }, rows);
+  }
+
   if (el.listItems) {
     return div(
       { ...positionStyle, flexDirection: "column", gap: 8, color: designSystem.palette.ink, fontSize: el.fontSize ?? designSystem.typography.scale.body },

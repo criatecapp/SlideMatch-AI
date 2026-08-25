@@ -61,6 +61,40 @@ describe("composeSlide", () => {
   });
 });
 
+describe("composeSlide — chart/table", () => {
+  const CHART_LAYOUT: Layout = {
+    id: "chart_01", name: "Chart", type: "chart", canvas: { width: 1920, height: 1080 },
+    slots: [{ id: "chart1", kind: "chart", role: "chart", position: { x: 10, y: 20, w: 80, h: 60 }, required: false, editable: true, locked: false, aiEditable: true, priority: 5, overflowBehavior: "shrink_font", responsiveBehavior: "scale" }],
+  };
+  const TABLE_LAYOUT: Layout = {
+    id: "table_01", name: "Table", type: "table", canvas: { width: 1920, height: 1080 },
+    slots: [{ id: "table1", kind: "table", role: "table", position: { x: 10, y: 20, w: 80, h: 60 }, required: false, editable: true, locked: false, aiEditable: true, priority: 5, overflowBehavior: "shrink_font", responsiveBehavior: "scale" }],
+  };
+
+  it("composes a chart element when dataPoints are assigned", () => {
+    const slide = composeSlide({
+      order: 0, purpose: "data", layout: CHART_LAYOUT, designSystem: DESIGN_SYSTEM,
+      contentMap: { slotAssignments: [{ slotId: "chart1", chartTitle: "Incidentes por mês", dataPoints: [{ label: "Jan", value: 12 }, { label: "Fev", value: 8 }] }] },
+    });
+    expect(slide.elements).toHaveLength(1);
+    expect(slide.elements[0].dataPoints).toEqual([{ label: "Jan", value: 12 }, { label: "Fev", value: 8 }]);
+    expect(slide.elements[0].chartTitle).toBe("Incidentes por mês");
+  });
+
+  it("skips a chart slot when dataPoints is empty or missing", () => {
+    const slide = composeSlide({ order: 0, purpose: "data", layout: CHART_LAYOUT, designSystem: DESIGN_SYSTEM, contentMap: { slotAssignments: [{ slotId: "chart1" }] } });
+    expect(slide.elements).toHaveLength(0);
+  });
+
+  it("composes a table element when tableRows are assigned", () => {
+    const slide = composeSlide({
+      order: 0, purpose: "data", layout: TABLE_LAYOUT, designSystem: DESIGN_SYSTEM,
+      contentMap: { slotAssignments: [{ slotId: "table1", tableRows: [["Risco", "Probabilidade"], ["Phishing", "Alta"]] }] },
+    });
+    expect(slide.elements[0].tableRows).toEqual([["Risco", "Probabilidade"], ["Phishing", "Alta"]]);
+  });
+});
+
 describe("slideNeedsOverflowSlide", () => {
   it("is true when any element overflowed", () => {
     const slide = composeSlide({

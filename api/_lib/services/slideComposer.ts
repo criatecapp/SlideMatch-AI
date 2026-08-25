@@ -64,6 +64,16 @@ export function composeSlide(params: {
     const assignment = assignmentBySlot.get(slot.id);
     if (!assignment) continue;
 
+    if (slot.kind === "chart" && assignment.dataPoints && assignment.dataPoints.length > 0) {
+      elements.push({ slotId: slot.id, kind: slot.kind, role: slot.role, position, chartTitle: assignment.chartTitle, dataPoints: assignment.dataPoints, overflow: false });
+      continue;
+    }
+
+    if (slot.kind === "table" && assignment.tableRows && assignment.tableRows.length > 0) {
+      elements.push({ slotId: slot.id, kind: slot.kind, role: slot.role, position, tableRows: assignment.tableRows, overflow: false });
+      continue;
+    }
+
     if (LIST_ROLES.has(slot.role) && assignment.listItems) {
       elements.push({ slotId: slot.id, kind: slot.kind, role: slot.role, position, listItems: assignment.listItems, overflow: false });
       continue;
