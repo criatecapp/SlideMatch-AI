@@ -1,7 +1,7 @@
 {
   "buildCommand": "cd frontend && npm install && npm run build",
   "outputDirectory": "frontend/dist",
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
+  "rewrites": [{ "source": "/((?!api/)(?!assets/).*)", "destination": "/index.html" }],
   "functions": {
     "api/presentations/[id]/generate.ts": { "maxDuration": 60 },
     "api/presentations/[id]/edit.ts": { "maxDuration": 60 },

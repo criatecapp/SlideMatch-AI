@@ -84,14 +84,15 @@ describe("generatePresentation", () => {
     expect(updated.lastError).toContain("JSON inválido");
   });
 
-  it("completes with zero slides (not a crash) when the chosen template has no layouts", async () => {
+  it("fails clearly (not a silent empty 'generated') when the chosen template has no layouts", async () => {
     const project = await createProject("user-1", { title: "P" } as any);
     await createTemplate(null, { name: "Empty", active: true, layouts: [] } as any);
     const presentation = await createPresentation("user-1", { projectId: project.id, title: "A" } as any);
 
-    const result = await generatePresentation("user-1", presentation.id, fakeProvider());
-    expect(result.presentation.status).toBe("generated");
-    expect(result.slides).toHaveLength(0);
+    await expect(generatePresentation("user-1", presentation.id, fakeProvider())).rejects.toThrow(ValidationAppError);
+    const updated = await getPresentation("user-1", presentation.id);
+    expect(updated.status).toBe("failed");
+    expect(updated.lastError).toContain("nenhum layout");
   });
 
   it("still generates content when there are no uploaded images (image slot simply stays empty)", async () => {

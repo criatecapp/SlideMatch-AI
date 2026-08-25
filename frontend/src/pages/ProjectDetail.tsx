@@ -27,7 +27,14 @@ export default function ProjectDetail() {
     setMedia(m.items);
     setTemplates(t.items);
     setPresentations(pres.items);
-    if (!selectedTemplateId && t.items.length > 0) setSelectedTemplateId(t.items[0].id);
+    // Nunca escolhe sozinho um template sem nenhum layout — ele não serve
+    // pra gerar nada (Template Matcher não tem o que casar). Prefere o
+    // primeiro template utilizável; se nenhum tiver layout, não seleciona
+    // nada (o aviso abaixo já orienta o usuário a criar um).
+    if (!selectedTemplateId) {
+      const usable = t.items.find((tpl) => tpl.layouts.length > 0);
+      if (usable) setSelectedTemplateId(usable.id);
+    }
   }
 
   useEffect(() => {
@@ -100,7 +107,11 @@ export default function ProjectDetail() {
             Template
             <select value={selectedTemplateId} onChange={(e) => setSelectedTemplateId(e.target.value)}>
               <option value="">A IA escolhe automaticamente</option>
-              {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {templates.map((t) => (
+                <option key={t.id} value={t.id} disabled={t.layouts.length === 0}>
+                  {t.name}{t.layouts.length === 0 ? " (sem layouts — não pode ser usado)" : ""}
+                </option>
+              ))}
             </select>
           </label>
           {templates.length === 0 && (

@@ -17,6 +17,8 @@ export default function Editor() {
   const [versions, setVersions] = useState<Version[]>([]);
   const [showVersions, setShowVersions] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<"pptx" | "pdf" | "png" | null>(null);
+  const [exportLinks, setExportLinks] = useState<{ format: string; url: string }[]>([]);
   const saveTimer = useRef<ReturnType<typeof setTimeout>>();
 
   const loadAll = useCallback(async () => {
@@ -82,15 +84,24 @@ export default function Editor() {
     }
   }
 
+  // Nunca window.open() depois de um await — o navegador já não considera
+  // isso parte do clique original (gesto do usuário) nesse ponto e bloqueia
+  // a navegação da aba em silêncio (confirmado ao vivo: a aba abria em
+  // branco e nunca navegava). Em vez disso, guarda a URL real assinada e
+  // mostra um link de download de verdade — o clique NESSE link é que é o
+  // gesto confiável.
   async function doExport(format: "pptx" | "pdf" | "png") {
     if (!presentationId) return;
     setError(null);
+    setExporting(format);
     try {
       const result = await api.post<{ url?: string; urls?: string[] }>(`/presentations/${presentationId}/export?format=${format}`);
       const urls = result.urls ?? (result.url ? [result.url] : []);
-      urls.forEach((u) => window.open(u, "_blank"));
+      setExportLinks((prev) => [...prev.filter((l) => l.format !== format), ...urls.map((url, i) => ({ format: urls.length > 1 ? `${format} ${i + 1}` : format, url }))]);
     } catch (e: any) {
       setError(e.message);
+    } finally {
+      setExporting(null);
     }
   }
 
@@ -124,13 +135,24 @@ export default function Editor() {
             <>
               <span className="small muted">{saveState === "saving" ? "Salvando…" : saveState === "saved" ? "Salvo" : ""}</span>
               <button onClick={loadVersions}>Histórico</button>
-              <button onClick={() => doExport("png")}>Exportar PNG</button>
-              <button onClick={() => doExport("pdf")}>Exportar PDF</button>
-              <button className="accent" onClick={() => doExport("pptx")}>Exportar .pptx</button>
+              <button onClick={() => doExport("png")} disabled={exporting === "png"}>{exporting === "png" ? "Exportando…" : "Exportar PNG"}</button>
+              <button onClick={() => doExport("pdf")} disabled={exporting === "pdf"}>{exporting === "pdf" ? "Exportando…" : "Exportar PDF"}</button>
+              <button className="accent" onClick={() => doExport("pptx")} disabled={exporting === "pptx"}>{exporting === "pptx" ? "Exportando…" : "Exportar .pptx"}</button>
             </>
           )}
         </div>
       </div>
+
+      {exportLinks.length > 0 && (
+        <div className="card row wrap">
+          <span className="small muted">Pronto pra baixar:</span>
+          {exportLinks.map((l) => (
+            <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" className="link-btn">
+              {l.format}
+            </a>
+          ))}
+        </div>
+      )}
 
       {error && <p className="small" style={{ color: "var(--danger)" }}>{error}</p>}
       {presentation.lastError && <p className="small" style={{ color: "var(--danger)" }}>Última falha: {presentation.lastError}</p>}

@@ -15,7 +15,7 @@ export async function createTemplate(ownerId: string | null, payload: TemplateCr
 // Templates são uma biblioteca compartilhada (ownerId=null) + templates
 // próprios do usuário — Template Matcher olha pras duas.
 export async function listTemplates(activeOnly = false): Promise<Template[]> {
-  const snapshot = await getDb().collection(COLLECTION).get();
+  const snapshot = await getDb().collection(COLLECTION).orderBy("updatedAt", "desc").get();
   let templates = snapshot.docs.map((doc) => toTemplate(doc.id, doc.data()));
   if (activeOnly) templates = templates.filter((t) => t.active);
   return templates;

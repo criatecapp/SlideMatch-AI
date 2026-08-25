@@ -104,9 +104,18 @@ export async function generatePresentation(ownerId: string, presentationId: stri
       }
     }
 
+    // Terminar com 0 slides depois de planejar N seções não é sucesso —
+    // é o template escolhido não ter nenhum layout usável. Section 34:
+    // nunca deixar isso passar como "generated" silencioso.
+    if (slides.length === 0 && plan.sections.length > 0) {
+      throw new ValidationAppError(
+        `Nenhum slide pôde ser composto — o template "${template.name}" não tem nenhum layout com slots. Adicione ao menos um layout com slots ao template antes de gerar.`,
+      );
+    }
+
     const visualQaScore = { overall: averageScore(slides, allIssues), issueCount: allIssues.length, issues: allIssues.slice(0, 50) };
 
-    const updated = await commitVersion(ownerId, presentationId, slides, "ai", "Geração inicial via IA");
+    await commitVersion(ownerId, presentationId, slides, "ai", "Geração inicial via IA");
     const final = await updatePresentation(ownerId, presentationId, { status: "generated", visualQaScore });
 
     return { presentation: final, slides, qaIssues: allIssues };
