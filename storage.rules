@@ -1,9 +1,9 @@
 rules_version = '2';
 
-// Defense in depth only — the backend uses the Admin SDK (bypasses these
-// rules) to generate signed URLs and to read/write objects. These rules
-// exist so a client SDK can never read another user's files directly.
-// Layout: users/{userId}/projects/{projectId}/{images|assets|exports}/...
+// Defesa em profundidade — o backend usa o Admin SDK (contorna estas
+// regras) pra gerar signed URLs e ler/escrever objetos. Estas regras
+// existem só pra garantir que o client SDK nunca lê o arquivo de outro
+// usuário direto. Layout: users/{userId}/projects/{projectId}/{images|exports}/...
 service firebase.storage {
   match /b/{bucket}/o {
     match /users/{userId}/{allPaths=**} {

@@ -1,9 +1,11 @@
 rules_version = '2';
 
-// Defense in depth only. The backend (FastAPI + Firebase Admin SDK) is the
-// source of truth for authorization and always bypasses these rules via the
-// Admin SDK — they exist to block any direct client SDK access from ever
-// reading/writing another user's data. See docs/ARCHITECTURE.md section 2.
+// Defesa em profundidade só — o backend (Vercel Functions + Firebase Admin
+// SDK) é a fonte de verdade pra autorização e sempre contorna estas regras
+// via Admin SDK. Elas existem só pra bloquear qualquer acesso direto do SDK
+// cliente aos dados de outro usuário — nenhuma escrita direta do cliente é
+// permitida em nenhuma coleção (o backend sempre escreve por trás do
+// requireAuth() de cada rota).
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -17,12 +19,12 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isSignedIn() && request.auth.uid == userId;
-      allow write: if false; // only the backend (Admin SDK) writes profiles
+      allow write: if false;
     }
 
     match /projects/{projectId} {
       allow read: if isOwner(resource);
-      allow write: if false; // backend only
+      allow write: if false;
     }
 
     match /presentations/{presentationId} {
@@ -30,9 +32,11 @@ service cloud.firestore {
       allow write: if false;
     }
 
-    match /presentation_slides/{slideId} {
-      allow read: if isOwner(resource);
-      allow write: if false;
+    match /presentation_versions/{versionId} {
+      // Não tem ownerId direto (referencia presentationId) — sem leitura
+      // direta do cliente; a rota /presentations/:id/versions já filtra
+      // por dono da apresentação antes de devolver.
+      allow read, write: if false;
     }
 
     match /media/{mediaId} {
@@ -40,28 +44,19 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Templates são biblioteca compartilhada pra leitura (Template Matcher
+    // e Template Editor de qualquer usuário autenticado precisam ver todos
+    // pra montar a lista) — escrita sempre via backend, que checa dono.
     match /templates/{templateId} {
-      allow read: if isSignedIn(); // shared library, backend still gates writes
-      allow write: if false;
-    }
-
-    match /template_layouts/{layoutId} {
       allow read: if isSignedIn();
       allow write: if false;
     }
 
-    // ai_analysis, ai_generations, generation_jobs, settings: backend-only,
-    // never read or written directly by any client SDK.
-    match /ai_analysis/{docId} {
+    // settings, ai_generations: nunca lidos/escritos direto por client SDK.
+    match /settings/{scope} {
       allow read, write: if false;
     }
     match /ai_generations/{docId} {
-      allow read, write: if false;
-    }
-    match /generation_jobs/{jobId} {
-      allow read, write: if false;
-    }
-    match /settings/{scope} {
       allow read, write: if false;
     }
   }
