@@ -3,11 +3,8 @@
   "outputDirectory": "frontend/dist",
   "rewrites": [{ "source": "/((?!api/).*)", "destination": "/index.html" }],
   "functions": {
-    "api/presentations/*/analyze.ts": { "maxDuration": 60 },
-    "api/presentations/*/plan.ts": { "maxDuration": 60 },
-    "api/presentations/*/generate.ts": { "maxDuration": 60 },
-    "api/ai/command.ts": { "maxDuration": 60 },
-    "api/export/pdf.ts": { "maxDuration": 60 },
-    "api/export/png.ts": { "maxDuration": 60 }
+    "api/presentations/[id]/generate.ts": { "maxDuration": 60 },
+    "api/presentations/[id]/edit.ts": { "maxDuration": 60 },
+    "api/presentations/[id]/export.ts": { "maxDuration": 60 }
   }
 }
