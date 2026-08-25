@@ -18,7 +18,7 @@ import { createTemplate } from "./templateService";
 import { generatePresentation } from "./aiOrchestrator";
 import { ValidationAppError } from "../errors";
 import type { AIProvider } from "../providers/aiProvider";
-import { AIGenerationError } from "../providers/openaiProvider";
+import { AIGenerationError } from "../errors";
 
 const HERO_LAYOUT = {
   id: "hero_01", name: "Hero", type: "hero", canvas: { width: 1920, height: 1080 },

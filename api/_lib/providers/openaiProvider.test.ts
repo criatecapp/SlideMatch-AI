@@ -10,7 +10,8 @@ const { mockCreate, mockOpenAIConstructor } = vi.hoisted(() => {
 
 vi.mock("openai", () => ({ default: mockOpenAIConstructor }));
 
-import { AIGenerationError, OpenAIProvider } from "./openaiProvider";
+import { OpenAIProvider } from "./openaiProvider";
+import { AIGenerationError } from "../errors";
 
 function responseWith(content: string) {
   return { choices: [{ message: { content } }] };

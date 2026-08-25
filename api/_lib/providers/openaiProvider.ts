@@ -16,8 +16,7 @@ import {
   type PresentationPlan,
 } from "../schemas/ai";
 import type { AIProvider, ImageInput } from "./aiProvider";
-
-export class AIGenerationError extends Error {}
+import { AIGenerationError } from "../errors";
 
 export interface OpenAIProviderConfig {
   apiKey?: string;
@@ -73,12 +72,22 @@ export class OpenAIProvider implements AIProvider {
   }
 
   private async complete(messages: OpenAI.Chat.ChatCompletionMessageParam[], temperature: number): Promise<string> {
-    const response = await this.client.chat.completions.create({
-      model: this.model,
-      messages,
-      response_format: { type: "json_object" },
-      temperature,
-    });
+    let response;
+    try {
+      response = await this.client.chat.completions.create({
+        model: this.model,
+        messages,
+        response_format: { type: "json_object" },
+        temperature,
+      });
+    } catch (err: any) {
+      // Erro de rede/autenticação/rate-limit da OpenAI não deve vazar como
+      // 500 genérico — vira AIGenerationError, que a rota mapeia pra uma
+      // mensagem legível (section 34: nunca "Something went wrong").
+      if (err?.status === 401) throw new AIGenerationError("Chave da OpenAI inválida ou não configurada. Verifique OPENAI_API_KEY.");
+      if (err?.status === 429) throw new AIGenerationError("Limite de uso da OpenAI atingido. Tente novamente em instantes.");
+      throw new AIGenerationError(`Falha ao chamar o modelo de IA: ${err?.message ?? String(err)}`);
+    }
     const content = response.choices[0]?.message?.content;
     if (!content) throw new AIGenerationError("Empty response from model");
     return content;
