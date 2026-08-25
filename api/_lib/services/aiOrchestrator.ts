@@ -4,6 +4,7 @@ import { listMedia } from "./mediaService";
 import { getTemplate, listTemplates } from "./templateService";
 import { commitVersion, getPresentation, updatePresentation } from "./presentationService";
 import { rankLayouts } from "./templateMatcher";
+import { normalizePlanSections } from "./planNormalizer";
 import { sanitizeContentMap } from "./contentMapper";
 import { resolveImagesForLayout } from "./imageResolver";
 import { composeSlide } from "./slideComposer";
@@ -71,6 +72,10 @@ export async function generatePresentation(ownerId: string, presentationId: stri
     } else {
       plan = { slideCount: project.minSlides, reasoning: "Planning desativado — usando minSlides seções genéricas", sections: Array.from({ length: project.minSlides }, (_, i) => ({ order: i, purpose: "content", contentType: "text" as const, estimatedImages: 0, textDensity: "medium" as const })) };
     }
+    // A IA pode devolver `order` em qualquer numeração — todo consumidor
+    // depois daqui (Slide Composer, AI Editor por slideOrder, frontend)
+    // espera 0..n-1 contíguo.
+    plan = normalizePlanSections(plan);
 
     // 5. Art Director
     let designDirection: DesignDirection | null = null;
