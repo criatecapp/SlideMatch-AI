@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../lib/api";
-import type { Layout, Slot, SlotKind, Template } from "../lib/types";
+import type { Layout, Slot, SlotKind, SlotPosition, Template } from "../lib/types";
 import SlideCanvas from "../components/SlideCanvas";
+import LayoutSlotEditor from "../components/LayoutSlotEditor";
 
 const SLOT_KINDS: SlotKind[] = ["text", "image", "icon", "video", "chart", "table", "shape", "button"];
 const ROLE_SUGGESTIONS = [
@@ -46,6 +47,7 @@ export default function TemplateEditor() {
   const [activeLayoutIdx, setActiveLayoutIdx] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!templateId) return;
@@ -65,6 +67,12 @@ export default function TemplateEditor() {
   function updateSlot(layoutIdx: number, slotIdx: number, patch: Partial<Slot>) {
     const layout = template!.layouts[layoutIdx];
     const slots = layout.slots.map((s, i) => (i === slotIdx ? { ...s, ...patch } : s));
+    updateLayout(layoutIdx, { slots });
+  }
+
+  function changeSlotPositionById(layoutIdx: number, slotId: string, position: SlotPosition) {
+    const layout = template!.layouts[layoutIdx];
+    const slots = layout.slots.map((s) => (s.id === slotId ? { ...s, position } : s));
     updateLayout(layoutIdx, { slots });
   }
 
@@ -145,11 +153,11 @@ export default function TemplateEditor() {
       <div className="card stack">
         <div className="row between">
           <h3 style={{ fontSize: 15 }}>Layouts</h3>
-          <button onClick={() => { update({ layouts: [...template.layouts, emptyLayout()] }); setActiveLayoutIdx(template.layouts.length); }}>+ Novo layout</button>
+          <button onClick={() => { update({ layouts: [...template.layouts, emptyLayout()] }); setActiveLayoutIdx(template.layouts.length); setSelectedSlotId(null); }}>+ Novo layout</button>
         </div>
         <div className="row wrap">
           {template.layouts.map((l, i) => (
-            <button key={l.id} onClick={() => setActiveLayoutIdx(i)} style={{ border: i === activeLayoutIdx ? "2px solid var(--accent)" : "1px solid var(--line)" }}>{l.name || "(sem nome)"}</button>
+            <button key={l.id} onClick={() => { setActiveLayoutIdx(i); setSelectedSlotId(null); }} style={{ border: i === activeLayoutIdx ? "2px solid var(--accent)" : "1px solid var(--line)" }}>{l.name || "(sem nome)"}</button>
           ))}
         </div>
 
@@ -160,11 +168,27 @@ export default function TemplateEditor() {
                 <label>Nome<input value={layout.name} onChange={(e) => updateLayout(activeLayoutIdx, { name: e.target.value })} /></label>
                 <label>Tipo (composição)<input value={layout.type} onChange={(e) => updateLayout(activeLayoutIdx, { type: e.target.value })} placeholder="hero, text_image, stats…" /></label>
               </div>
-              <button className="danger" style={{ alignSelf: "flex-start" }} onClick={() => { update({ layouts: template.layouts.filter((_, i) => i !== activeLayoutIdx) }); setActiveLayoutIdx(0); }}>Apagar layout</button>
+              <button className="danger" style={{ alignSelf: "flex-start" }} onClick={() => { update({ layouts: template.layouts.filter((_, i) => i !== activeLayoutIdx) }); setActiveLayoutIdx(0); setSelectedSlotId(null); }}>Apagar layout</button>
 
-              <div className="row between"><h4 style={{ margin: 0 }}>Slots</h4><button onClick={() => updateLayout(activeLayoutIdx, { slots: [...layout.slots, emptySlot()] })}>+ Slot</button></div>
+              <div className="row between">
+                <h4 style={{ margin: 0 }}>Slots</h4>
+                <button
+                  onClick={() => {
+                    const slot = emptySlot();
+                    updateLayout(activeLayoutIdx, { slots: [...layout.slots, slot] });
+                    setSelectedSlotId(slot.id);
+                  }}
+                >
+                  + Slot
+                </button>
+              </div>
               {layout.slots.map((slot, si) => (
-                <div key={slot.id} className="stack" style={{ border: "1px solid var(--line)", borderRadius: 8, padding: 10 }}>
+                <div
+                  key={slot.id}
+                  className="stack"
+                  onClick={() => setSelectedSlotId(slot.id)}
+                  style={{ border: slot.id === selectedSlotId ? `2px solid ${template.designSystem.palette.accent}` : "1px solid var(--line)", borderRadius: 8, padding: 10, cursor: "pointer" }}
+                >
                   <div className="grid cols-2">
                     <label>Tipo
                       <select value={slot.kind} onChange={(e) => updateSlot(activeLayoutIdx, si, { kind: e.target.value as SlotKind })}>
@@ -183,7 +207,16 @@ export default function TemplateEditor() {
                     <label>máx. caracteres<input type="number" value={slot.maxCharacters ?? ""} onChange={(e) => updateSlot(activeLayoutIdx, si, { maxCharacters: e.target.value ? Number(e.target.value) : undefined })} /></label>
                     <label className="row" style={{ alignSelf: "flex-end" }}><input type="checkbox" checked={slot.required} onChange={(e) => updateSlot(activeLayoutIdx, si, { required: e.target.checked })} style={{ width: "auto" }} /> obrigatório</label>
                   </div>
-                  <button className="danger" onClick={() => updateLayout(activeLayoutIdx, { slots: layout.slots.filter((_, i) => i !== si) })}>Remover slot</button>
+                  <button
+                    className="danger"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      updateLayout(activeLayoutIdx, { slots: layout.slots.filter((_, i) => i !== si) });
+                      if (selectedSlotId === slot.id) setSelectedSlotId(null);
+                    }}
+                  >
+                    Remover slot
+                  </button>
                 </div>
               ))}
               <datalist id="role-suggestions">
@@ -191,9 +224,22 @@ export default function TemplateEditor() {
               </datalist>
             </div>
 
-            <div>
-              <p className="small muted">Pré-visualização</p>
-              <SlideCanvas slide={previewSlide(layout)} designSystem={template.designSystem} aspectRatio={template.aspectRatio} />
+            <div className="stack">
+              <div>
+                <p className="small muted">Arraste pra mover, puxe o canto pra redimensionar</p>
+                <LayoutSlotEditor
+                  layout={layout}
+                  designSystem={template.designSystem}
+                  aspectRatio={template.aspectRatio}
+                  selectedSlotId={selectedSlotId}
+                  onSelect={(id) => setSelectedSlotId(id || null)}
+                  onChangePosition={(slotId, position) => changeSlotPositionById(activeLayoutIdx, slotId, position)}
+                />
+              </div>
+              <div>
+                <p className="small muted">Pré-visualização de conteúdo</p>
+                <SlideCanvas slide={previewSlide(layout)} designSystem={template.designSystem} aspectRatio={template.aspectRatio} />
+              </div>
             </div>
           </div>
         )}

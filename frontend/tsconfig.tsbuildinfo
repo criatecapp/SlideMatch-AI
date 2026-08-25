@@ -1,1 +1,0 @@
-{"root":["./src/app.tsx","./src/main.tsx","./src/vite-env.d.ts","./src/components/slidecanvas.tsx","./src/lib/authcontext.tsx","./src/lib/api.ts","./src/lib/firebase.ts","./src/lib/types.ts","./src/pages/editor.tsx","./src/pages/login.tsx","./src/pages/projectdetail.tsx","./src/pages/projects.tsx","./src/pages/templateeditor.tsx","./src/pages/templates.tsx"],"version":"5.9.3"}
