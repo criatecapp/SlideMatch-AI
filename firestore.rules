@@ -1,0 +1,68 @@
+rules_version = '2';
+
+// Defense in depth only. The backend (FastAPI + Firebase Admin SDK) is the
+// source of truth for authorization and always bypasses these rules via the
+// Admin SDK — they exist to block any direct client SDK access from ever
+// reading/writing another user's data. See docs/ARCHITECTURE.md section 2.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(resource) {
+      return isSignedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow write: if false; // only the backend (Admin SDK) writes profiles
+    }
+
+    match /projects/{projectId} {
+      allow read: if isOwner(resource);
+      allow write: if false; // backend only
+    }
+
+    match /presentations/{presentationId} {
+      allow read: if isOwner(resource);
+      allow write: if false;
+    }
+
+    match /presentation_slides/{slideId} {
+      allow read: if isOwner(resource);
+      allow write: if false;
+    }
+
+    match /media/{mediaId} {
+      allow read: if isOwner(resource);
+      allow write: if false;
+    }
+
+    match /templates/{templateId} {
+      allow read: if isSignedIn(); // shared library, backend still gates writes
+      allow write: if false;
+    }
+
+    match /template_layouts/{layoutId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // ai_analysis, ai_generations, generation_jobs, settings: backend-only,
+    // never read or written directly by any client SDK.
+    match /ai_analysis/{docId} {
+      allow read, write: if false;
+    }
+    match /ai_generations/{docId} {
+      allow read, write: if false;
+    }
+    match /generation_jobs/{jobId} {
+      allow read, write: if false;
+    }
+    match /settings/{scope} {
+      allow read, write: if false;
+    }
+  }
+}
