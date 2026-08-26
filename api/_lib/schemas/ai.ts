@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { SlotKindSchema, SlotPositionSchema } from "./template";
+import { MAX_SLIDES } from "../limits";
 
 // ---------------------------------------------------------------------------
 // Content Analyzer (section 9) — interpreta o pedido do usuário. NÃO decide
@@ -32,10 +34,14 @@ export const PlanSectionSchema = z.object({
 });
 export type PlanSection = z.infer<typeof PlanSectionSchema>;
 
+// P1#1 — teto real de trabalho: é o tamanho de `sections` (não
+// `slideCount`, que é só o número que a IA reporta) que decide quantas
+// vezes o pipeline de composição roda por geração. Sem isso, uma resposta
+// da IA com centenas de seções não seria barrada por schema nenhum.
 export const PresentationPlanSchema = z.object({
-  slideCount: z.number().int().min(1).max(60),
+  slideCount: z.number().int().min(1).max(MAX_SLIDES),
   reasoning: z.string(),
-  sections: z.array(PlanSectionSchema),
+  sections: z.array(PlanSectionSchema).max(MAX_SLIDES),
 });
 export type PresentationPlan = z.infer<typeof PresentationPlanSchema>;
 
@@ -108,10 +114,38 @@ export const EditActionSchema = z.enum([
 ]);
 export type EditAction = z.infer<typeof EditActionSchema>;
 
+// Conteúdo novo pra um slot já existente — mesmo formato de SlotAssignment
+// (Content Mapper), sem slotId porque quem carrega o alvo é o EditOp.
+// Reaproveitado por regenerate_content (conteúdo do slot em op.slotId) e por
+// add_element (conteúdo do elemento novo).
+export const EditContentSchema = z.object({
+  textValue: z.string().optional(),
+  listItems: z.array(z.string()).optional(),
+  statValue: z.string().optional(),
+  chartTitle: z.string().optional(),
+  dataPoints: z.array(ChartDataPointSchema).optional(),
+  tableRows: z.array(z.array(z.string())).optional(),
+});
+export type EditContent = z.infer<typeof EditContentSchema>;
+
+// Especificação de um elemento novo pra add_element — kind/role obrigam a
+// IA a declarar o que está criando; position é uma proposta (o sistema
+// valida contra sobreposição/limites e tenta reposicionar se inválida).
+export const NewElementSchema = z
+  .object({
+    kind: SlotKindSchema,
+    role: z.string().min(1),
+    position: SlotPositionSchema.optional(),
+  })
+  .merge(EditContentSchema);
+export type NewElementSpec = z.infer<typeof NewElementSchema>;
+
 export const EditOpSchema = z.object({
   action: EditActionSchema,
   slotId: z.string().optional(),
   value: z.string().optional(),
+  content: EditContentSchema.optional(),
+  newElement: NewElementSchema.optional(),
 });
 export type EditOp = z.infer<typeof EditOpSchema>;
 

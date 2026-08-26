@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import type { ZodType, z } from "zod";
 import { ZodError } from "zod";
-import { AppError, ValidationAppError } from "./errors";
+import { AppError, RateLimitAppError, ValidationAppError } from "./errors";
 
 // Todo body de POST/PATCH passa por aqui — nunca `schema.parse(req.body)`
 // direto numa rota, porque um ZodError cru vira 500 (erro interno) em vez
@@ -33,6 +33,7 @@ export function handleRoute(handler: RouteHandler): RouteHandler {
       await handler(req, res);
     } catch (err) {
       if (err instanceof AppError) {
+        if (err instanceof RateLimitAppError) res.setHeader("Retry-After", String(err.retryAfterSeconds));
         res.status(err.status).json({ error: { code: err.code, message: err.message } });
         return;
       }

@@ -70,6 +70,10 @@ export interface Presentation {
   currentVersion: number;
   lastError: string | null;
   exportPaths: ExportPaths;
+  // P1#1 — marca quando a geração atual começou (status vira "analyzing").
+  // Usado só pra detectar geração travada (timeout do runtime matou o
+  // processo antes do catch rodar) — nulo fora de uma geração em curso.
+  generationStartedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 }

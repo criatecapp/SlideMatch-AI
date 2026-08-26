@@ -38,3 +38,14 @@ export class AIGenerationError extends AppError {
     super(502, "ai_generation_error", message);
   }
 }
+
+// P1#2 — limite de uso temporário atingido. `retryAfterSeconds` vira o
+// header Retry-After (seção http.ts) — nunca expõe detalhe interno do
+// rate limiter, só quanto tempo esperar.
+export class RateLimitAppError extends AppError {
+  retryAfterSeconds: number;
+  constructor(retryAfterSeconds: number, message = "Limite temporário atingido. Tente novamente em alguns minutos.") {
+    super(429, "rate_limited", message);
+    this.retryAfterSeconds = retryAfterSeconds;
+  }
+}

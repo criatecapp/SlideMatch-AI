@@ -17,9 +17,17 @@ export default handleRoute(async (req: VercelRequest, res: VercelResponse) => {
   }
 
   // Templates são uma biblioteca compartilhada pra leitura/casamento, mas
-  // só o dono edita/apaga o próprio.
+  // escrita é restrita: ownerId === null é template de biblioteca/sistema —
+  // só admin (custom claim) pode alterar/excluir. ownerId === próprio uid
+  // é template privado do usuário. Qualquer outro caso é template de outro
+  // usuário. Único caller de updateTemplate/deleteTemplate no backend
+  // (confirmado) — esta é a única porta de escrita pra templates.
   const existing = await getTemplate(id);
-  if (existing.ownerId !== null && existing.ownerId !== user.uid) {
+  if (existing.ownerId === null) {
+    if (!user.admin) {
+      throw new ForbiddenAppError("Somente administradores podem alterar templates de biblioteca compartilhada");
+    }
+  } else if (existing.ownerId !== user.uid) {
     throw new ForbiddenAppError("Você não pode alterar um template que não é seu");
   }
 

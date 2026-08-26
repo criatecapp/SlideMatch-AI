@@ -70,12 +70,22 @@ export function composeSlide(params: {
     }
 
     if (slot.kind === "table" && assignment.tableRows && assignment.tableRows.length > 0) {
-      elements.push({ slotId: slot.id, kind: slot.kind, role: slot.role, position, tableRows: assignment.tableRows, overflow: false });
+      // Mesma lógica da lista: linha de cabeçalho não conta como "linha de
+      // conteúdo" pro limite de maxLines.
+      const overflow = Boolean(slot.maxLines && assignment.tableRows.length - 1 > slot.maxLines);
+      elements.push({ slotId: slot.id, kind: slot.kind, role: slot.role, position, tableRows: assignment.tableRows, overflow });
       continue;
     }
 
     if (LIST_ROLES.has(slot.role) && assignment.listItems) {
-      elements.push({ slotId: slot.id, kind: slot.kind, role: slot.role, position, listItems: assignment.listItems, overflow: false });
+      // Cada item de lista ocupa ~1 linha — reaproveita o mesmo maxLines
+      // do slot (já existe no schema, section 14) como piso de capacidade;
+      // sem maxLines definido, mantém o comportamento anterior (nunca
+      // sinaliza overflow). Isso é o que liga slideNeedsOverflowSlide a
+      // listas grandes (P1#4) — antes disso, uma lista nunca sinalizava
+      // overflow, por maior que fosse.
+      const overflow = Boolean(slot.maxLines && assignment.listItems.length > slot.maxLines);
+      elements.push({ slotId: slot.id, kind: slot.kind, role: slot.role, position, listItems: assignment.listItems, overflow });
       continue;
     }
 
@@ -108,6 +118,61 @@ export function composeSlide(params: {
 // (prioridade 8 do section 14) — o Composer não decide isso sozinho.
 export function slideNeedsOverflowSlide(slide: Slide): boolean {
   return slide.elements.some((e) => e.overflow);
+}
+
+// P1#4 — conecta slideNeedsOverflowSlide a uma ação real: divide o
+// elemento que estourou em dois, SE ele for uma coleção divisível
+// (lista/tabela — cada item "cabe" ou "não cabe" independente dos
+// vizinhos). Texto solto (título/parágrafo) não é dividido — não existe
+// um jeito seguro de partir uma frase ao meio sem IA, e um leve excesso
+// de título já é resolvido pelo Content Fit Engine (encolher/truncar);
+// forçar slide extra pra isso violaria "não force fonte ilegível pra
+// evitar slide extra" ao contrário — forçaria slide extra desnecessário.
+// `layout` fornece o `maxLines` do slot (mesmo campo que já sinalizou o
+// overflow em composeSlide) — é o piso que decide onde cortar.
+export function splitOverflowSlide(slide: Slide, layout: Layout): { primary: Slide; overflow: Slide | null } {
+  const target = slide.elements.find((el) => el.overflow && (el.listItems || (el.tableRows && el.tableRows.length > 0)));
+  if (!target) return { primary: slide, overflow: null };
+
+  const slot = layout.slots.find((s) => s.id === target.slotId);
+  const maxLines = slot?.maxLines;
+  if (!maxLines) return { primary: slide, overflow: null }; // sem limite conhecido, não há onde cortar com segurança
+
+  if (target.listItems) {
+    const primaryItems = target.listItems.slice(0, maxLines);
+    const restItems = target.listItems.slice(maxLines);
+    if (restItems.length === 0) return { primary: slide, overflow: null };
+    return {
+      primary: withElement(slide, target.slotId, { listItems: primaryItems, overflow: false }),
+      overflow: continuationSlide(slide, target.slotId, { listItems: restItems, overflow: restItems.length > maxLines }),
+    };
+  }
+
+  if (target.tableRows && target.tableRows.length > 0) {
+    const [header, ...rows] = target.tableRows;
+    const primaryRows = [header, ...rows.slice(0, maxLines)];
+    const restRows = rows.slice(maxLines);
+    if (restRows.length === 0) return { primary: slide, overflow: null };
+    return {
+      primary: withElement(slide, target.slotId, { tableRows: primaryRows, overflow: false }),
+      overflow: continuationSlide(slide, target.slotId, { tableRows: [header, ...restRows], overflow: restRows.length > maxLines }),
+    };
+  }
+
+  return { primary: slide, overflow: null };
+}
+
+function withElement(slide: Slide, slotId: string, patch: Partial<SlideElement>): Slide {
+  return { ...slide, elements: slide.elements.map((el) => (el.slotId === slotId ? { ...el, ...patch } : el)) };
+}
+
+function continuationSlide(original: Slide, slotId: string, patch: Partial<SlideElement>): Slide {
+  return {
+    order: original.order, // renumerado pelo chamador junto com o resto da apresentação
+    layoutId: original.layoutId,
+    purpose: `${original.purpose} (continuação)`,
+    elements: original.elements.map((el) => (el.slotId === slotId ? { ...el, ...patch } : el)),
+  };
 }
 
 export function missingRequiredSlots(layout: Layout, slide: Slide): Slot[] {

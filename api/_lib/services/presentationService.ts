@@ -2,9 +2,36 @@ import { getDb, serverTimestamp } from "../firestore";
 import { PresentationCreateSchema, type Presentation, type PresentationCreateInput, type PresentationVersion } from "../schemas/presentation";
 import type { Slide } from "../schemas/presentation";
 import { NotFoundAppError } from "../errors";
+import { STALE_GENERATION_MS } from "../limits";
 
 const PRESENTATIONS = "presentations";
 const VERSIONS = "presentation_versions";
+
+const STALE_ERROR_MESSAGE =
+  "A geração anterior não terminou dentro do tempo esperado e foi marcada como falha automaticamente. Tente gerar novamente.";
+
+// P1#1 — se o runtime for encerrado pelo timeout no meio de uma geração,
+// o catch da aplicação não roda (o processo simplesmente morre) e a
+// apresentação fica presa em "analyzing"/"generating" pra sempre. Em vez
+// de um job de fundo (fora de escopo aqui), a PRÓXIMA leitura desta
+// apresentação — usuário abrindo a página, ou uma nova tentativa de
+// gerar — se auto-cura: se já passou STALE_GENERATION_MS desde que a
+// geração começou, marca como "failed" aqui mesmo, sem precisar de
+// nenhuma infraestrutura de fila/cron.
+async function healIfStale(id: string, data: Record<string, any>): Promise<Record<string, any>> {
+  if (data.status !== "analyzing" && data.status !== "generating") return data;
+  const startedAtRaw = data.generationStartedAt;
+  if (!startedAtRaw) return data; // sem marca de início — nada a curar (ex.: dado de antes desta correção)
+  const startedAt = new Date(startedAtRaw).getTime();
+  if (Number.isNaN(startedAt) || Date.now() - startedAt < STALE_GENERATION_MS) return data; // ainda dentro do tempo normal
+
+  const healed = { ...data, status: "failed", lastError: STALE_ERROR_MESSAGE, generationStartedAt: null };
+  await getDb().collection(PRESENTATIONS).doc(id).set(
+    { status: "failed", lastError: STALE_ERROR_MESSAGE, generationStartedAt: null, updatedAt: serverTimestamp() },
+    { merge: true },
+  );
+  return healed;
+}
 
 export async function createPresentation(ownerId: string, payload: PresentationCreateInput): Promise<Presentation> {
   const data = PresentationCreateSchema.parse(payload);
@@ -22,6 +49,7 @@ export async function createPresentation(ownerId: string, payload: PresentationC
     currentVersion: 0,
     lastError: null,
     exportPaths: { pptx: null, pdf: null, png: [] },
+    generationStartedAt: null,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -39,7 +67,8 @@ export async function listPresentations(ownerId: string, projectId?: string): Pr
 export async function getPresentation(ownerId: string, presentationId: string): Promise<Presentation> {
   const snapshot = await getDb().collection(PRESENTATIONS).doc(presentationId).get();
   if (!snapshot.exists || snapshot.data()!.ownerId !== ownerId) throw new NotFoundAppError("Apresentação não encontrada");
-  return toPresentation(snapshot.id, snapshot.data()!);
+  const healed = await healIfStale(presentationId, snapshot.data()!);
+  return toPresentation(presentationId, healed);
 }
 
 export async function updatePresentation(ownerId: string, presentationId: string, changes: Record<string, unknown>): Promise<Presentation> {

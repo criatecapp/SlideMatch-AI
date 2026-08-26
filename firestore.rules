@@ -59,5 +59,14 @@ service cloud.firestore {
     match /ai_generations/{docId} {
       allow read, write: if false;
     }
+
+    // P1#2 — contadores de rate limit. Já ficariam bloqueados por padrão
+    // (nenhuma coleção sem `match` explícito é acessível), mas a regra
+    // fica explícita aqui pra nunca depender de omissão: se um dia
+    // alguém adicionar uma regra "coringa" mais permissiva, esta
+    // continua bloqueando o cliente de ler/zerar o próprio contador.
+    match /rate_limits/{docId} {
+      allow read, write: if false;
+    }
   }
 }

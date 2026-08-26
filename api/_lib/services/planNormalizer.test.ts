@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { normalizePlanSections } from "./planNormalizer";
+import { MAX_SLIDES } from "../limits";
 import type { PresentationPlan } from "../schemas/ai";
 
 function section(order: number, purpose: string) {
@@ -31,5 +32,23 @@ describe("normalizePlanSections", () => {
     const plan: PresentationPlan = { slideCount: 1, reasoning: "x", sections: [section(7, "only")] };
     normalizePlanSections(plan);
     expect(plan.sections[0].order).toBe(7);
+  });
+
+  // P1#1 — este é o ÚNICO ponto por onde todo plano passa antes de virar
+  // trabalho real (seções → chamadas OpenAI → render). Trunca aqui pega
+  // qualquer origem: resposta da IA, fallback heurístico, futuro caminho
+  // que ninguém pensou ainda.
+  it(`trunca pra MAX_SLIDES (${MAX_SLIDES}) mesmo se o plano vier com mais seções`, () => {
+    const many = Array.from({ length: MAX_SLIDES + 20 }, (_, i) => section(i, `s${i}`));
+    const plan: PresentationPlan = { slideCount: many.length, reasoning: "x", sections: many };
+    const result = normalizePlanSections(plan);
+    expect(result.sections).toHaveLength(MAX_SLIDES);
+    expect(result.sections.map((s) => s.order)).toEqual(Array.from({ length: MAX_SLIDES }, (_, i) => i));
+  });
+
+  it("não trunca quando o plano já está dentro do limite", () => {
+    const plan: PresentationPlan = { slideCount: 5, reasoning: "x", sections: Array.from({ length: 5 }, (_, i) => section(i, `s${i}`)) };
+    const result = normalizePlanSections(plan);
+    expect(result.sections).toHaveLength(5);
   });
 });

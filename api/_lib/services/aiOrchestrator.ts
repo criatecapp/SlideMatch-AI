@@ -7,8 +7,9 @@ import { rankLayouts } from "./templateMatcher";
 import { normalizePlanSections } from "./planNormalizer";
 import { sanitizeContentMap } from "./contentMapper";
 import { resolveImagesForLayout } from "./imageResolver";
-import { composeSlide } from "./slideComposer";
+import { composeSlide, slideNeedsOverflowSlide, splitOverflowSlide } from "./slideComposer";
 import { runVisualQa, type VisualQaIssue } from "./visualQa";
+import { runRenderQa, type MediaDimensions } from "./renderQa";
 import { logError, logGeneration } from "./aiLogging";
 import { ValidationAppError } from "../errors";
 import type { AIProvider } from "../providers/aiProvider";
@@ -31,7 +32,11 @@ export async function generatePresentation(ownerId: string, presentationId: stri
   const project = await getProject(ownerId, presentation.projectId);
 
   try {
-    await updatePresentation(ownerId, presentationId, { status: "analyzing" });
+    // P1#1 — marca o início real da geração; se o processo morrer por
+    // timeout antes do catch abaixo rodar, `getPresentation` (chamada em
+    // toda leitura desta apresentação) detecta e recupera sozinha depois
+    // de STALE_GENERATION_MS.
+    await updatePresentation(ownerId, presentationId, { status: "analyzing", generationStartedAt: new Date().toISOString() });
 
     // 1. Content Analyzer
     let contentAnalysis: ContentAnalysis;
@@ -55,6 +60,11 @@ export async function generatePresentation(ownerId: string, presentationId: stri
       await logGeneration(ownerId, presentationId, "image_analysis", { count: mediaItems.length }, imageAnalysis);
     }
     const urlByMediaId = Object.fromEntries(mediaItems.filter((m) => m.url).map((m) => [m.id, m.url as string]));
+    // Dimensão real da mídia — só o Render QA usa (P1#2: crop severo de
+    // imagem precisa da proporção real, não só do que a IA estimou).
+    const mediaDimensionsById: Record<string, MediaDimensions> = Object.fromEntries(
+      mediaItems.map((m) => [m.id, { width: m.width, height: m.height }]),
+    );
 
     // 3. Template Matcher precisa de UM template escolhido (biblioteca de
     // layouts) — a escolha de QUAL template ainda não é orientada por IA
@@ -96,13 +106,33 @@ export async function generatePresentation(ownerId: string, presentationId: stri
       const outcome = await composeSectionWithRetries({
         ownerId, presentationId, section, template, contentAnalysis, imageAnalysis, urlByMediaId, usedMediaIds,
         designDirection, provider, maxAttempts: settings.visualQa.maxAttempts, threshold: settings.visualQa.threshold,
-        featureMapping: settings.features.contentMapping,
+        featureMapping: settings.features.contentMapping, mediaDimensionsById,
       });
-      if (outcome) {
-        slides.push(outcome.slide);
-        allIssues.push(...outcome.qa.issues);
+      if (!outcome) continue;
+
+      allIssues.push(...outcome.qa.issues);
+      if (outcome.renderQa) allIssues.push(...outcome.renderQa.issues);
+
+      // P1#4 — se sobrou conteúdo (lista/tabela grande demais pro slot),
+      // divide em slides de continuação em vez de aceitar o corte
+      // silencioso. Texto solto que só encostou no limite não passa por
+      // aqui (splitOverflowSlide devolve overflow:null pra esses casos) —
+      // fica como o Content Fit já resolveu (encolher/truncar).
+      let pending: Slide | null = outcome.slide;
+      let splitGuard = 0;
+      while (pending && slideNeedsOverflowSlide(pending) && splitGuard < 10) {
+        splitGuard++;
+        const { primary, overflow } = splitOverflowSlide(pending, outcome.layout);
+        slides.push(primary);
+        pending = overflow;
       }
+      if (pending) slides.push(pending);
     }
+
+    // Splits podem ter inserido slides extras no meio da sequência —
+    // renumera pra manter `order` contíguo 0..n-1 (mesmo contrato que
+    // normalizePlanSections já garante pro plano).
+    slides.forEach((s, i) => { s.order = i; });
 
     // Terminar com 0 slides depois de planejar N seções não é sucesso —
     // é o template escolhido não ter nenhum layout usável. Section 34:
@@ -116,12 +146,12 @@ export async function generatePresentation(ownerId: string, presentationId: stri
     const visualQaScore = { overall: averageScore(slides, allIssues), issueCount: allIssues.length, issues: allIssues.slice(0, 50) };
 
     await commitVersion(ownerId, presentationId, slides, "ai", "Geração inicial via IA");
-    const final = await updatePresentation(ownerId, presentationId, { status: "generated", visualQaScore });
+    const final = await updatePresentation(ownerId, presentationId, { status: "generated", visualQaScore, generationStartedAt: null });
 
     return { presentation: final, slides, qaIssues: allIssues };
   } catch (err: any) {
     await logError(ownerId, presentationId, "generate", err?.message ?? String(err));
-    await updatePresentation(ownerId, presentationId, { status: "failed", lastError: err?.message ?? String(err) });
+    await updatePresentation(ownerId, presentationId, { status: "failed", lastError: err?.message ?? String(err), generationStartedAt: null });
     throw err;
   }
 }
@@ -137,6 +167,23 @@ interface SectionOutcome {
   slide: Slide;
   qa: ReturnType<typeof runVisualQa>;
   layout: Layout;
+  renderQa: Awaited<ReturnType<typeof runRenderQa>> | null;
+}
+
+// P1#3 — Auto-Fix: antes de trocar de layout (o fallback que já existia),
+// classifica o motivo da falha e tenta UMA correção local, quando existe
+// uma segura dentro da arquitetura atual:
+//   missing_required → o Content Mapper é IA não-determinística; uma
+//     segunda chamada pro MESMO layout é uma correção local legítima
+//     (não muda nada estrutural, só dá outra chance da IA preencher os
+//     slots obrigatórios que faltaram).
+// overlap/low_contrast/image_ratio não têm correção local segura ainda
+// nesta arquitetura (mexer nisso exigiria mover posição fixa do slot ou
+// sobrescrever cor por elemento — nenhum dos dois existe hoje) — esses
+// continuam caindo no fallback de trocar layout, e ficam documentados
+// aqui como o limite atual, não escondidos.
+function canRetryLocally(qa: ReturnType<typeof runVisualQa>): boolean {
+  return qa.issues.some((i) => i.code === "missing_required");
 }
 
 async function composeSectionWithRetries(params: {
@@ -153,6 +200,7 @@ async function composeSectionWithRetries(params: {
   maxAttempts: number;
   threshold: number;
   featureMapping: boolean;
+  mediaDimensionsById: Record<string, MediaDimensions>;
 }): Promise<SectionOutcome | null> {
   const ranked = rankLayouts(params.section, params.template.layouts, params.imageAnalysis.length, params.designDirection ?? undefined);
   if (ranked.length === 0) {
@@ -160,11 +208,7 @@ async function composeSectionWithRetries(params: {
     return null;
   }
 
-  let best: SectionOutcome | null = null;
-
-  for (let attempt = 0; attempt < Math.min(params.maxAttempts, ranked.length); attempt++) {
-    const layout = ranked[attempt].layout;
-
+  async function composeAttempt(layout: Layout) {
     let contentMap = { slotAssignments: [] as { slotId: string; textValue?: string }[] };
     if (params.featureMapping) {
       const raw = await params.provider.mapContentToSlots({
@@ -186,15 +230,39 @@ async function composeSectionWithRetries(params: {
       contentMap,
       resolvedImages,
     });
-
     const qa = runVisualQa(slide, layout, params.template.designSystem);
-    if (!best || qa.score > best.qa.score) best = { slide, qa, layout };
-    if (qa.score >= params.threshold) return best;
+    return { slide, qa, resolvedImages };
+  }
+
+  let best: { slide: Slide; qa: ReturnType<typeof runVisualQa>; layout: Layout } | null = null;
+
+  for (let attempt = 0; attempt < Math.min(params.maxAttempts, ranked.length); attempt++) {
+    const layout = ranked[attempt].layout;
+    let outcome = await composeAttempt(layout);
+
+    // Auto-Fix local (P1#3) — só UMA tentativa extra, no MESMO layout,
+    // antes de aceitar a troca de layout como próximo passo.
+    if (outcome.qa.score < params.threshold && canRetryLocally(outcome.qa)) {
+      for (const img of outcome.resolvedImages) params.usedMediaIds.delete(img.mediaId);
+      const retried = await composeAttempt(layout);
+      if (retried.qa.score > outcome.qa.score) {
+        outcome = retried;
+      } else {
+        // Fica com o outcome original — desfaz a liberação de imagem de
+        // cima (era só pra dar à tentativa local a mesma chance de
+        // escolher imagem) e libera a da tentativa local descartada.
+        for (const img of retried.resolvedImages) params.usedMediaIds.delete(img.mediaId);
+        for (const img of outcome.resolvedImages) params.usedMediaIds.add(img.mediaId);
+      }
+    }
+
+    if (!best || outcome.qa.score > best.qa.score) best = { slide: outcome.slide, qa: outcome.qa, layout };
+    if (outcome.qa.score >= params.threshold) break;
 
     // Corrigiu não o suficiente — libera as imagens usadas nesta tentativa
     // pra próxima tentativa poder escolher de novo (evita "gastar" a
     // imagem boa numa composição que vai ser descartada).
-    for (const img of resolvedImages) params.usedMediaIds.delete(img.mediaId);
+    for (const img of outcome.resolvedImages) params.usedMediaIds.delete(img.mediaId);
   }
 
   // Reaplica o uso de imagem da MELHOR tentativa (a última liberação acima
@@ -205,7 +273,18 @@ async function composeSectionWithRetries(params: {
     }
   }
 
-  return best;
+  if (!best) return null;
+
+  // P1#2 — segunda camada do Visual QA, sobre o render real (não o JSON).
+  // Roda só UMA vez, sobre a composição final escolhida — não a cada
+  // tentativa do loop acima (isso multiplicaria o custo de renderizar por
+  // até maxAttempts×seções sem necessidade: a troca de layout já é
+  // decidida pela camada JSON, que é instantânea; o render real serve pra
+  // registrar problemas que só aparecem depois de renderizar de verdade,
+  // não pra guiar a escolha de layout).
+  const renderQa = await runRenderQa(best.slide, best.layout, params.template.designSystem, params.mediaDimensionsById);
+
+  return { ...best, renderQa };
 }
 
 function averageScore(slides: Slide[], issues: VisualQaIssue[]): number {

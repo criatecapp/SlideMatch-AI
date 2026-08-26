@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FAKE_SERVER_TIMESTAMP, FakeFirestore } from "../testing/fakeFirestore";
 
 const fakeDb = new FakeFirestore();
@@ -14,7 +14,9 @@ import {
   getPresentation,
   listVersions,
   revertToVersion,
+  updatePresentation,
 } from "./presentationService";
+import { STALE_GENERATION_MS } from "../limits";
 import type { Slide } from "../schemas/presentation";
 
 function slide(text: string): Slide {
@@ -73,5 +75,62 @@ describe("presentationService", () => {
     await commitVersion("u1", p.id, [slide("Oi")], "ai", "v1");
     await deletePresentation("u1", p.id);
     await expect(getPresentation("u1", p.id)).rejects.toThrow(NotFoundAppError);
+  });
+});
+
+// P1#1 — geração presa em "analyzing"/"generating" se recupera sozinha na
+// próxima leitura, sem precisar de fila/cron. Relógio mockado só aqui.
+describe("presentationService — recuperação de status preso (stale)", () => {
+  beforeEach(() => {
+    fakeDb.clear();
+    vi.useFakeTimers();
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("apresentação normal em andamento (dentro do prazo) NÃO é marcada como failed prematuramente", async () => {
+    const p = await createPresentation("u1", { projectId: "p1", title: "T" } as any);
+    await updatePresentation("u1", p.id, { status: "generating", generationStartedAt: new Date().toISOString() });
+
+    vi.advanceTimersByTime(STALE_GENERATION_MS - 1000); // ainda dentro da janela segura
+
+    const read = await getPresentation("u1", p.id);
+    expect(read.status).toBe("generating");
+    expect(read.lastError).toBeNull();
+  });
+
+  it("apresentação stale (além do prazo) é recuperada automaticamente como failed na próxima leitura", async () => {
+    const p = await createPresentation("u1", { projectId: "p1", title: "T" } as any);
+    await updatePresentation("u1", p.id, { status: "analyzing", generationStartedAt: new Date().toISOString() });
+
+    vi.advanceTimersByTime(STALE_GENERATION_MS + 1000); // passou do prazo
+
+    const read = await getPresentation("u1", p.id);
+    expect(read.status).toBe("failed");
+    expect(read.lastError).toContain("não terminou dentro do tempo esperado");
+    expect(read.generationStartedAt).toBeNull();
+
+    // a cura persiste — não é só um efeito da leitura em memória
+    const readAgain = await getPresentation("u1", p.id);
+    expect(readAgain.status).toBe("failed");
+  });
+
+  it("apresentação sem generationStartedAt (dado anterior a esta correção) não é mexida só por estar em status generating", async () => {
+    const p = await createPresentation("u1", { projectId: "p1", title: "T" } as any);
+    await updatePresentation("u1", p.id, { status: "generating" }); // sem generationStartedAt
+
+    vi.advanceTimersByTime(STALE_GENERATION_MS * 3);
+
+    const read = await getPresentation("u1", p.id);
+    expect(read.status).toBe("generating"); // sem evidência de quando começou, não mexe
+  });
+
+  it("status terminal (generated/draft) nunca é tocado pela cura, mesmo com generationStartedAt antigo", async () => {
+    const p = await createPresentation("u1", { projectId: "p1", title: "T" } as any);
+    await updatePresentation("u1", p.id, { status: "generated", generationStartedAt: new Date().toISOString() });
+
+    vi.advanceTimersByTime(STALE_GENERATION_MS * 3);
+
+    const read = await getPresentation("u1", p.id);
+    expect(read.status).toBe("generated");
   });
 });

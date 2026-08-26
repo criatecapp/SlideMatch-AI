@@ -4,8 +4,10 @@ export default defineConfig({
   testDir: "./e2e",
   // Fluxo real: signup + template + projeto + apresentação + geração real
   // (OpenAI) + edição + reabertura + export real (Storage) — cada etapa é
-  // uma chamada de rede de verdade, soma bastante.
-  timeout: 150_000,
+  // uma chamada de rede de verdade, soma bastante. A geração agora também
+  // roda o Render QA (P1#2) — satori/resvg de verdade por seção — então o
+  // timeout tem folga extra além do que a chamada de IA sozinha levaria.
+  timeout: 210_000,
   fullyParallel: false,
   workers: 1,
   reporter: "list",

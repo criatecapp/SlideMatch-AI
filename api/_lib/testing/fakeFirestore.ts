@@ -148,6 +148,20 @@ class FakeBatch {
   }
 }
 
+// Fake mínimo de transação — o event loop do teste é single-thread, então
+// não existe interleaving real entre o get() e o set() dentro do mesmo
+// runTransaction; isso já é suficiente pra exercitar a lógica do rate
+// limiter (P1#2), só não simula corrida entre requests concorrentes de
+// verdade (o Admin SDK real faz isso).
+class FakeTransaction {
+  async get(ref: FakeDocRef) {
+    return ref.get();
+  }
+  set(ref: FakeDocRef, data: Record<string, any>, options?: { merge?: boolean }) {
+    return ref.set(data, options);
+  }
+}
+
 export class FakeFirestore {
   private collections = new Map<string, FakeCollection>();
 
@@ -158,6 +172,10 @@ export class FakeFirestore {
 
   batch() {
     return new FakeBatch(this);
+  }
+
+  async runTransaction<T>(fn: (tx: FakeTransaction) => Promise<T>): Promise<T> {
+    return fn(new FakeTransaction());
   }
 
   clear() {

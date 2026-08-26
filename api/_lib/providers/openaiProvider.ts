@@ -185,8 +185,19 @@ export class OpenAIProvider implements AIProvider {
       "O usuário pediu uma alteração em linguagem natural num slide já composto. Altere só " +
       "o necessário — se o comando for 'troque a imagem', não altere título, cores, posição " +
       "ou tipografia a menos que seja necessário. Responda em JSON com: summary (string), " +
-      "ops (lista de {action: set_text|replace_image|adjust_style|regenerate_content|" +
-      "remove_element|add_element, slotId?, value?}).";
+      "ops (lista de {action, slotId?, value?, content?, newElement?}). action é um de: " +
+      "set_text|replace_image|adjust_style|regenerate_content|remove_element|add_element. " +
+      "Pra regenerate_content: informe slotId de um slot QUE JÁ EXISTE no slide recebido " +
+      "(nunca invente um novo) e content com o novo conteúdo no formato adequado ao tipo " +
+      "desse slot — {textValue} pra slot de texto, {dataPoints (lista de {label,value} REAIS, " +
+      "nunca inventados), chartTitle} pra slot de gráfico, {tableRows} pra slot de tabela, " +
+      "{listItems} pra lista, {statValue} pra estatística. Se o slide não tiver nenhum slot " +
+      "do tipo necessário (ex: pediram gráfico mas não há slot kind=chart), NÃO force — " +
+      "prefira deixar de fora essa op. Pra add_element: informe newElement com kind, role, " +
+      "e o conteúdo (mesmo formato de content acima), mais uma position {x,y,w,h} em % " +
+      "(0-100) que não sobreponha nenhum elemento já presente no slide recebido — o sistema " +
+      "valida e tenta reposicionar se a proposta não couber, mas a melhor chance de sucesso " +
+      "é você já propor um espaço livre de verdade olhando as posições existentes.";
     const user = JSON.stringify({ slide: params.slide, command: params.command });
     return this.callJson({ systemPrompt: system, userContent: user, schema: EditCommandResultSchema });
   }

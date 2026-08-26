@@ -58,10 +58,14 @@ test("fluxo completo: login → template → projeto → gerar → editar → re
   await expect(page).toHaveURL(/\/presentations\/.+/, { timeout: 10_000 });
   const presentationUrl = page.url();
 
-  // 5. Gerar com IA (chamada real à OpenAI — pode levar alguns segundos)
+  // 5. Gerar com IA (chamada real à OpenAI, + Content Fit + Visual QA
+  // determinístico + Render QA — este último (P1#2 da auditoria) renderiza
+  // o slide de verdade com satori/resvg pra analisar o PNG, o que soma
+  // alguns segundos reais de rede/CPU por seção além das chamadas de IA;
+  // por isso o timeout é mais folgado que uma chamada de API comum).
   await page.getByRole("button", { name: "Gerar com IA" }).click();
   await expect(page.getByRole("button", { name: "Gerando…" })).toBeVisible();
-  await expect(page.locator("textarea").first()).toBeVisible({ timeout: 45_000 });
+  await expect(page.locator("textarea").first()).toBeVisible({ timeout: 90_000 });
 
   // 6. Editar o texto do slide ativo (autosave)
   const textarea = page.locator("textarea").first();
